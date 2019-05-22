@@ -38,7 +38,6 @@ cluster_pos_counts = {}
 print('Calculating cluster modes...')
 
 cluster_mode_peptides = []
-global_pos_counts = np.zeros((len(peptide_ints[0]), len(ALPHABET)))
 
 for i in range(len(peptide_ints)):
     label = cluster_labels[i]
@@ -46,14 +45,11 @@ for i in range(len(peptide_ints)):
         cluster_pos_counts[label] = np.zeros((len(peptide_ints[i]), len(ALPHABET)))
     for idx, value in enumerate(peptide_ints[i]):
         cluster_pos_counts[label][idx][value] += 1
-        global_pos_counts[idx][value] += 1
 
 for i in range(best_kval):
     pep = ''.join([ALPHABET[np.argmax(aa_dist)] for aa_dist in cluster_pos_counts[i]])
     cluster_mode_peptides.append(pep)
     print('MODE of cluster {}: {}'.format(i, pep))
-
-np.savetxt('GLOBAL_POSITION_COUNTS.txt', global_pos_counts)
 
 
 

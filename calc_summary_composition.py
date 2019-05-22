@@ -1,5 +1,12 @@
-import sys
+import numpy as np
 import operator
+import sys
+
+ALPHABET = ['A','R','N','D','C','Q','E','G','H','I', 'L','K','M','F','P','S','T','W','Y','V', '*']
+
+def pep_to_int_list( pep):
+    '''Takes a single string of amino acids and translates to a list of ints'''
+    return(list(map(ALPHABET.index, pep.replace('\n', '')))) 
 
 if(len(sys.argv) != 2):
     print('Usage: calc_summary_composition.py [target_AA_strings_file]. Must be formatted correctly.')
@@ -14,7 +21,12 @@ for i in range(len(lines)):
 
 print(lines)
 
+#do summary
+
 summary_dict = {}
+peptide_strings = [line.replace('\n','') for line in lines]
+peptide_ints = [pep_to_int_list(item) for item in peptide_strings]
+
 for line in lines:
     if line not in summary_dict.keys():
         summary_dict[line] = 1
@@ -28,3 +40,13 @@ print(sorted_summary[:100])
 with open('{}_SUMMARY.txt'.format(fname.split('.')[0]), 'w+') as f:
     for item in sorted_summary:
         f.write('{}, {}\n'.format(item[0], item[1]))
+
+#do composition
+
+global_pos_counts = np.zeros((len(peptide_ints[0]), len(ALPHABET)))
+
+for i in range(len(peptide_ints)):
+    for idx, value in enumerate(peptide_ints[i]):
+        global_pos_counts[idx][value] += 1
+
+np.savetxt('{}_COMPOSITION.txt'.format(fname.split('.')[0]), global_pos_counts)
