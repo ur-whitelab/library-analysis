@@ -10,3 +10,8 @@
 
 #fastq files are too large for github
 *.fastq
+
+#image files
+*.png
+*.svg
+*.pdf

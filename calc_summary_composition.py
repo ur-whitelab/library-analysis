@@ -1,8 +1,10 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import operator
 import sys
 
 ALPHABET = ['A','R','N','D','C','Q','E','G','H','I', 'L','K','M','F','P','S','T','W','Y','V', '*']
+TEMPLATE_SEQ = "TLSW*EAMDMCTDTG"
 
 def pep_to_int_list( pep):
     '''Takes a single string of amino acids and translates to a list of ints'''
@@ -50,3 +52,18 @@ for i in range(len(peptide_ints)):
         global_pos_counts[idx][value] += 1
 
 np.savetxt('{}_COMPOSITION.txt'.format(fname.split('.')[0]), global_pos_counts)
+
+#make stacked bar chart
+x_indices = np.arange(len(TEMPLATE_SEQ))
+plots = []
+width = 0.35
+bottom = np.zeros(len(TEMPLATE_SEQ))
+
+for i in range(len(ALPHABET)):
+    plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i])
+    bottom += global_pos_counts[:,i]
+
+plt.xticks(x_indices, TEMPLATE_SEQ)
+plt.legend(bbox_to_anchor=(1.15,1.15))
+
+plt.savefig('{}_composition_bar_chart.svg'.format(fname.split('.')[0]))
