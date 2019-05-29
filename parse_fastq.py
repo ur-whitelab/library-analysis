@@ -32,13 +32,29 @@ def main():
         for line in barcode_lines:
             barcodes.append(line.replace('\n', ''))
         print('Barcodes: {}'.format(barcodes))
-    names = []
-    codon_seqs = []
-    aa_seqs = []
-    qualities = []
-    seq_lengths = []
+
+    names = {}
+    codon_seqs = {}
+    aa_seqs = {}
+    qualities = {}
+
+    for barcode in barcodes:
+        names[barcode] = []
+        codon_seqs[barcode] = []
+        aa_seqs[barcode] = []
+        qualities[barcode] = []
+
+    hits = 0
+    misses = 0
+    count = 0
+    barcodes_missing = 0
+    bad_barcodes = 0
+    sequence_end_missing = 0
+    template_not_found = 0
+    bad_reads = 0
     with open(fastq_filename,'r') as f:
         for name, sequence, quality in fastqIterator(f):
+            count += 1
             if 'N' not in sequence:
                 seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
                 codon_idx = None
@@ -46,26 +62,60 @@ def main():
                     # first region not mutated
                     codon_idx = seq_str.index('TLSW*')*3
                     aa_idx = seq_str.index('TLSW*')
-                    # 129 is length back to barcode codon from start of 'TLSW*'
-                    barcode_idx = codon_idx - 129
+                    # 132 is length back to barcode codon from start of 'TLSW*'
+                    barcode_idx = codon_idx - 132
                 elif '*EAMDMC' in seq_str:
                     #second region not mutated
                     codon_idx = (seq_str.index('*EAMDMC') - len('TLSW') )*3
                     aa_idx = seq_str.index('*EAMDMC') - len('TLSW')
-                    barcode_idx = codon_idx - 129
+                    barcode_idx = codon_idx - 132
                 elif 'CTDTG' in seq_str:
                     #third region not mutated. shouldn't ever get here but just in case
                     codon_idx = (seq_str.index('CTDTG') - len('TLSW*EAMDM') )*3
                     aa_idx = seq_str.index('CTDTG') - len('TLSW*EAMDM')
-                    barcode_idx = codon_idx - 129
+                    barcode_idx = codon_idx - 132
                 if (codon_idx is not None
                     and len(str(seq_str)[aa_idx:aa_idx + 15]) == 15
                     and barcode_idx >= 0) :
                     barcode = sequence[barcode_idx:barcode_idx + 3]
-                    names.append(name)
-                    codon_seqs.append(sequence[codon_idx:codon_idx + 45])
-                    qualities.append(quality[codon_idx:codon_idx + 45])
-                    aa_seqs.append(str(seq_str)[aa_idx:aa_idx + 15])
+                    if barcode in barcodes:
+                        names[barcode].append(name)
+                        codon_seqs[barcode].append(sequence[codon_idx:codon_idx + 45])
+                        qualities[barcode].append(quality[codon_idx:codon_idx + 45])
+                        aa_seqs[barcode].append(str(seq_str)[aa_idx:aa_idx + 15])
+                        #print('barcode for {} is {}'.
+                        #      format(aa_seqs[barcode][-1], barcode, sequence[6:9]))
+                        hits += 1
+                    else:
+                        misses += 1
+                        bad_barcodes += 1
+                elif barcode_idx < 0:
+                    misses += 1
+                    barcodes_missing += 1
+                elif len(str(seq_str)[aa_idx:aa_idx + 15]) != 15:
+                    misses += 1
+                    sequence_end_missing += 1
+                elif codon_idx is None:
+                    misses += 1
+                    template_not_found += 1
+            else:
+                misses += 1
+                bad_reads += 1
+    print(
+        'Hits: {}\nMisses: {}\n\
+        Missing Barcodes: {}\n\
+        Incorrect Barcodes: {}\n\
+        Incomplete Template Sequence: {}\n\
+        Template Not Found: {}\n\
+        Low-Quality Reads: {}\nTotal: {}'.format(hits,
+                                                 misses,
+                                                 barcodes_missing,
+                                                 bad_barcodes,
+                                                 sequence_end_missing,
+                                                 template_not_found,
+                                                 bad_reads,
+                                                 count)
+    )
 
     fastq_filename = fastq_filename.split('.')[0]
     with open(fastq_filename +'_LABELS.txt', 'w+') as f:
