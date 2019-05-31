@@ -117,22 +117,20 @@ def main():
                                                  count)
     )
 
-    fastq_filename = fastq_filename.split('.')[0]
-    with open(fastq_filename +'_LABELS.txt', 'w+') as f:
-        for name in names:
-            f.write('{}\n'.format(name))
-    with open(fastq_filename +'_CODONS.txt', 'w+') as f:
-        for codon in codon_seqs:
-            f.write('{}\n'.format(codon))
-    with open(fastq_filename +'_SCORES.txt', 'w+') as f:
-        for qual in qualities:
-            f.write('{}\n'.format(qual))
-    with open(fastq_filename +'_AA_SEQS.txt', 'w+') as f:
-        for aa_seq in aa_seqs:
-            f.write('{}\n'.format(aa_seq))
-    
-    
-        
+    for barcode in barcodes:
+        fastq_filename = fastq_filename.split('.')[0] + '_{}'.format(barcode)
+        with open(fastq_filename +'_LABELS.txt', 'w+') as f:
+            for name in names[barcode]:
+                f.write('{}\n'.format(name))
+        with open(fastq_filename +'_CODONS.txt', 'w+') as f:
+            for codon in codon_seqs[barcode]:
+                f.write('{}\n'.format(codon))
+        with open(fastq_filename +'_SCORES.txt', 'w+') as f:
+            for qual in qualities[barcode]:
+                f.write('{}\n'.format(qual))
+        with open(fastq_filename +'_AA_SEQS.txt', 'w+') as f:
+            for aa_seq in aa_seqs[barcode]:
+                f.write('{}\n'.format(aa_seq))
 
 if __name__ == '__main__':
     main()
