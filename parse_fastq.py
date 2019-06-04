@@ -118,17 +118,17 @@ def main():
     )
 
     for barcode in barcodes:
-        fastq_filename = fastq_filename.split('.')[0] + '_{}'.format(barcode)
-        with open(fastq_filename +'_LABELS.txt', 'w+') as f:
+        filename = fastq_filename.split('.')[0] + '_{}'.format(barcode)
+        with open(filename +'_LABELS.txt', 'w+') as f:
             for name in names[barcode]:
                 f.write('{}\n'.format(name))
-        with open(fastq_filename +'_CODONS.txt', 'w+') as f:
+        with open(filename +'_CODONS.txt', 'w+') as f:
             for codon in codon_seqs[barcode]:
                 f.write('{}\n'.format(codon))
-        with open(fastq_filename +'_SCORES.txt', 'w+') as f:
+        with open(filename +'_SCORES.txt', 'w+') as f:
             for qual in qualities[barcode]:
                 f.write('{}\n'.format(qual))
-        with open(fastq_filename +'_AA_SEQS.txt', 'w+') as f:
+        with open(filename +'_AA_SEQS.txt', 'w+') as f:
             for aa_seq in aa_seqs[barcode]:
                 f.write('{}\n'.format(aa_seq))
 
