@@ -1,3 +1,4 @@
+import re
 import sys
 from Bio.SeqIO.QualityIO import FastqGeneralIterator as fastqIterator
 from Bio.Seq import Seq 
@@ -58,22 +59,41 @@ def main():
             if 'N' not in sequence:
                 seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
                 codon_idx = None
-                if 'TLSW*' in seq_str:
-                    # first region not mutated
-                    codon_idx = seq_str.index('TLSW*')*3
-                    aa_idx = seq_str.index('TLSW*')
-                    # 132 is length back to barcode codon from start of 'TLSW*'
-                    barcode_idx = codon_idx - 132
-                elif '*EAMDMC' in seq_str:
-                    #second region not mutated
-                    codon_idx = (seq_str.index('*EAMDMC') - len('TLSW') )*3
-                    aa_idx = seq_str.index('*EAMDMC') - len('TLSW')
-                    barcode_idx = codon_idx - 132
-                elif 'CTDTG' in seq_str:
-                    #third region not mutated. shouldn't ever get here but just in case
-                    codon_idx = (seq_str.index('CTDTG') - len('TLSW*EAMDM') )*3
-                    aa_idx = seq_str.index('CTDTG') - len('TLSW*EAMDM')
-                    barcode_idx = codon_idx - 132
+                temp_str = 'TLSW\*'
+                for i, item in enumerate(temp_str):
+                    re_str = temp_str[:i]+'.'+temp_str[i+1:]
+                    try:
+                        start_idx = re.search(re_str, seq_str).start()
+                    except AttributeError:
+                        start_idx = None
+                    if start_idx is not None:
+                        codon_idx = start_idx * 3
+                        aa_idx = start_idx
+                        barcode_idx = codon_idx - 132
+                temp_str = '\*EAMDMC'
+                if codon_idx is None:
+                    for i, item in enumerate(temp_str):
+                        re_str = temp_str[:i]+'.'+temp_str[i+1:]
+                        try:
+                            start_idx = re.search(re_str, seq_str).start()
+                        except AttributeError:
+                            start_idx = None
+                        if start_idx is not None:
+                            codon_idx = (start_idx - len('TLSW')) * 3
+                            aa_idx = start_idx - len('TLSW')
+                            barcode_idx = codon_idx - 132
+                if codon_idx is None:
+                    temp_str = 'CTDTG'
+                    for i, item in enumerate(temp_str):
+                        re_str = temp_str[:i]+'.'+temp_str[i+1:]
+                        try:
+                            start_idx = re.search(re_str, seq_str).start()
+                        except AttributeError:
+                            start_idx = None
+                        if start_idx is not None:
+                            codon_idx = (start_idx - len('TLSW*EAMDMC')) * 3
+                            aa_idx = start_idx - len('TLSW*EAMDMC')
+                            barcode_idx = codon_idx - 132
                 if (codon_idx is not None
                     and len(str(seq_str)[aa_idx:aa_idx + 15]) == 15
                     and barcode_idx >= 0) :

@@ -1,6 +1,8 @@
+from matplotlib.cm import get_cmap
 import matplotlib.pyplot as plt
 import numpy as np
 import operator
+import pandas as pd
 import sys
 
 ALPHABET = ['A','R','N','D','C','Q','E','G','H','I', 'L','K','M','F','P','S','T','W','Y','V', '*']
@@ -51,16 +53,22 @@ for i in range(len(peptide_ints)):
     for idx, value in enumerate(peptide_ints[i]):
         global_pos_counts[idx][value] += 1
 
-np.savetxt('{}_COMPOSITION.txt'.format(fname.split('.')[0]), global_pos_counts)
+np.savetxt('{}_RAW_COMPOSITION.txt'.format(fname.split('.')[0]), global_pos_counts)
+
+composition_df = pd.DataFrame(data=np.transpose(global_pos_counts), index=ALPHABET, columns=list(TEMPLATE_SEQ))
+with open('{}_COMPOSITION.txt'.format(fname.split('.')[0]), 'w+') as f:
+    f.write(composition_df.to_string())
+
 
 #make stacked bar chart
 x_indices = np.arange(len(TEMPLATE_SEQ))
 plots = []
 width = 0.35
 bottom = np.zeros(len(TEMPLATE_SEQ))
+colormap = get_cmap('tab20')
 
 for i in range(len(ALPHABET)):
-    plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i])
+    plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i], color = colormap(float(i)/20.))
     bottom += global_pos_counts[:,i]
 
 plt.xticks(x_indices, TEMPLATE_SEQ)

@@ -82,7 +82,7 @@ cmap=plt.cm.get_cmap('Dark2')
 plt.scatter(two_d_distances[:,0], two_d_distances[:,1], c=cluster_labels, cmap=cmap, marker='.', alpha=0.3)# linewidths=0.05, 
 plt.scatter(cluster_mean_positions[:,0], cluster_mean_positions[:,1], c=list(range(best_kval)), cmap=cmap, marker='*', s=[200 for i in range(best_kval)])
 custom_lines = [Line2D([0], [0], color=cmap(float(i)/float(best_kval-1)), lw=4) for i in range(best_kval)]
-plt.legend(custom_lines, cluster_mode_peptides, bbox_to_anchor=(1.1,0.5))
+plt.legend(custom_lines, cluster_mode_peptides)#, bbox_to_anchor=(1.1,0.5))
 plt.savefig('{}_clusters_kmeans_pca.svg'.format(best_kval))
 plt.savefig('{}_clusters_kmeans_pca.png'.format(best_kval))
 
