@@ -1,12 +1,13 @@
 import re
 import sys
 from Bio.SeqIO.QualityIO import FastqGeneralIterator as fastqIterator
+from Bio import Align
 from Bio.Seq import Seq 
 from Bio.Alphabet import IUPAC
 from scipy.stats import mode
 
 def printHelp():
-    print('Usage: parse_fastq.py [target_FASTQ_file] [optional: barcode_designation_file]')
+    print('Usage: parse_fastq.py [target_FASTQ_file] [barcode_designation_file]')
     exit()
 '''This script parses and translates a fastq file into a number of datasets, 
    determined by the length of the barcode_designation_file. If not provided,
@@ -20,7 +21,7 @@ def printHelp():
 
 
 def main():
-    if(len(sys.argv) != 2 and len(sys.argv) != 3):
+    if(len(sys.argv) != 3):
         printHelp()
 
     fastq_filename = sys.argv[1]
@@ -28,10 +29,12 @@ def main():
     if len(sys.argv) == 3:
         barcode_filename = sys.argv[2]
     if barcode_filename is not None:
-        barcode_lines = open(barcode_filename, 'r').readlines()
+        barcode_lines = open(barcode_filename, 'r').read().splitlines()
         barcodes = []
+        barcode_templates = []
         for line in barcode_lines:
-            barcodes.append(line.replace('\n', ''))
+            barcodes.append(line.split()[0])
+            barcode_templates.append(line.split()[1])
         print('Barcodes: {}'.format(barcodes))
 
     names = {}
@@ -53,71 +56,88 @@ def main():
     sequence_end_missing = 0
     template_not_found = 0
     bad_reads = 0
+    TEMPLATE_SEQUENCE = 'ACCCTGTCCTGGTAGGAAGCCATGGACATGTGCACCGATACCGGA'
+    TEMPLATE_TRANSLATED = 'TLSW*EAMDMCTDTG'
+    BARCODE_SEQUENCES = ['GCTCGTATGTTGTGTGGAATTG',
+                         'GCTCGTAAGTTGTGTGGAATTG']
+
+    aligner = Align.PairwiseAligner()
+    aligner.mode = 'local'
+    #reward matches, punish mismatches
+    aligner.match = 2
+    aligner.mismatch = -1
+    #heavily penalize gaps
+    aligner.open_gap_score = -100.
+
     with open(fastq_filename,'r') as f:
+        # this parses a fastq file into names, sequences of DNA codons, 
+        # and the quality score for the sequence transcription
         for name, sequence, quality in fastqIterator(f):
             count += 1
             if 'N' not in sequence:
-                seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
-                codon_idx = None
-                temp_str = 'TLSW\*'
-                for i, item in enumerate(temp_str):
-                    re_str = temp_str[:i]+'.'+temp_str[i+1:]
+                scores = [0, 0]
+                for i, barcode_seq in enumerate(BARCODE_SEQUENCES):
+                    alignments = aligner.align(sequence, barcode_seq)
                     try:
-                        start_idx = re.search(re_str, seq_str).start()
-                    except AttributeError:
-                        start_idx = None
-                    if start_idx is not None:
-                        codon_idx = start_idx * 3
-                        aa_idx = start_idx
-                        barcode_idx = codon_idx - 132
-                temp_str = '\*EAMDMC'
-                if codon_idx is None:
-                    for i, item in enumerate(temp_str):
-                        re_str = temp_str[:i]+'.'+temp_str[i+1:]
-                        try:
-                            start_idx = re.search(re_str, seq_str).start()
-                        except AttributeError:
-                            start_idx = None
-                        if start_idx is not None:
-                            codon_idx = (start_idx - len('TLSW')) * 3
-                            aa_idx = start_idx - len('TLSW')
-                            barcode_idx = codon_idx - 132
-                if codon_idx is None:
-                    temp_str = 'CTDTG'
-                    for i, item in enumerate(temp_str):
-                        re_str = temp_str[:i]+'.'+temp_str[i+1:]
-                        try:
-                            start_idx = re.search(re_str, seq_str).start()
-                        except AttributeError:
-                            start_idx = None
-                        if start_idx is not None:
-                            codon_idx = (start_idx - len('TLSW*EAMDMC')) * 3
-                            aa_idx = start_idx - len('TLSW*EAMDMC')
-                            barcode_idx = codon_idx - 132
-                if (codon_idx is not None
-                    and len(str(seq_str)[aa_idx:aa_idx + 15]) == 15
-                    and barcode_idx >= 0) :
-                    barcode = sequence[barcode_idx:barcode_idx + 3]
-                    if barcode in barcodes:
-                        names[barcode].append(name)
-                        codon_seqs[barcode].append(sequence[codon_idx:codon_idx + 45])
-                        qualities[barcode].append(quality[codon_idx:codon_idx + 45])
-                        aa_seqs[barcode].append(str(seq_str)[aa_idx:aa_idx + 15])
-                        #print('barcode for {} is {}'.
-                        #      format(aa_seqs[barcode][-1], barcode, sequence[6:9]))
-                        hits += 1
-                    else:
-                        misses += 1
-                        bad_barcodes += 1
-                elif barcode_idx < 0:
-                    misses += 1
+                        scores[i] = (sorted(alignments)[-1].score)
+                    except IndexError:
+                        pass
+                if scores[0] != 0 or scores[1] != 0:
+                    maximal_idx = 0 if scores[0] > scores[1] else 1
+                    this_barcode = barcodes[maximal_idx]
+                else:
                     barcodes_missing += 1
-                elif len(str(seq_str)[aa_idx:aa_idx + 15]) != 15:
+                    misses += 1
+                    continue
+                seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
+                alignments = aligner.align(sequence, TEMPLATE_SEQUENCE)
+                split_alignment = str(sorted(alignments)[-1]).split('\n')
+                local_codon_idx = split_alignment[2].index(TEMPLATE_SEQUENCE[0])
+                barcode_idx = None#codon_idx - 132
+                aligned_seq_str = split_alignment[0][local_codon_idx:local_codon_idx+len(TEMPLATE_SEQUENCE)]
+                #screen for completely-missing first part of the sequence
+                if '.' not in aligned_seq_str and '-' not in aligned_seq_str:
+                    #print(Seq(aligned_seq_str, IUPAC.unambiguous_dna).translate())
+                    translated_aligned_seq = (Seq(aligned_seq_str, IUPAC.unambiguous_dna).translate())
+                    codon_idx = str(sequence).index(aligned_seq_str)
+                    barcode_idx = codon_idx - 132
+                    aa_idx = codon_idx / 3
+                    #print('Codon idx: {}, barcode idx: {}'.format(codon_idx, barcode_idx))
+                    names[this_barcode].append(name)
+                    codon_seqs[this_barcode].append(sequence[codon_idx:codon_idx + 45])
+                    qualities[this_barcode].append(quality[codon_idx:codon_idx + 45])
+                    aa_seqs[this_barcode].append(translated_aligned_seq)
+                    hits += 1
+                else:
                     misses += 1
                     sequence_end_missing += 1
-                elif codon_idx is None:
-                    misses += 1
-                    template_not_found += 1
+
+
+
+#                if (codon_idx is not None
+#                    and len(str(seq_str)[aa_idx:aa_idx + 15]) == 15
+#                    and barcode_idx >= 0) :
+#                    barcode = sequence[barcode_idx:barcode_idx + 3]
+#                    if barcode in barcodes:
+#                        names[barcode].append(name)
+#                        codon_seqs[barcode].append(sequence[codon_idx:codon_idx + 45])
+#                        qualities[barcode].append(quality[codon_idx:codon_idx + 45])
+#                        aa_seqs[barcode].append(translated_aligned_seq)
+#                        #print('barcode for {} is {}'.
+#                        #      format(aa_seqs[barcode][-1], barcode, sequence[6:9]))
+#                        hits += 1
+#                    else:
+#                        misses += 1
+#                        bad_barcodes += 1
+#                elif barcode_idx < 0:
+#                    misses += 1
+#                    barcodes_missing += 1
+#                elif len(str(seq_str)[aa_idx:aa_idx + 15]) != 15:
+#                    misses += 1
+#                    sequence_end_missing += 1
+#                elif codon_idx is None:
+#                    misses += 1
+#                    template_not_found += 1
             else:
                 misses += 1
                 bad_reads += 1
