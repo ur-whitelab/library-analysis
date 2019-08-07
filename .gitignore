@@ -7,6 +7,7 @@
 
 #text files
 *.txt
+!sample_barcode_file.txt
 
 #fastq files are too large for github
 *.fastq

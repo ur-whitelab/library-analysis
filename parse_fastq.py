@@ -1,10 +1,10 @@
-import re
 import sys
+import warnings
 from Bio.SeqIO.QualityIO import FastqGeneralIterator as fastqIterator
 from Bio import Align
-from Bio.Seq import Seq 
+from Bio import BiopythonWarning
+from Bio.Seq import Seq
 from Bio.Alphabet import IUPAC
-from scipy.stats import mode
 
 def printHelp():
     print('Usage: parse_fastq.py [target_FASTQ_file] [barcode_designation_file]')
@@ -18,11 +18,29 @@ def printHelp():
    The barcode designation file should contain nothing but one codon per line 
    indicating the "barcodes" that should be sorted and processed separately.'''
 
+class Error(Exception):
+    '''Base class for exceptions'''
+    pass
 
+class BarcodeFormatError(Error):
+    '''Raised when the barcode file is incorrectly formatted'''
+    pass
+
+class BarcodeBadCharacterError(Error):
+    '''Raised when the barcode file has disallowed characters.'''
+    pass
+
+class BarcodeSizeError(Error):
+    '''Raised when the barcode file is too small.'''
+    pass
+
+ALLOWED_CHARS = set('ACTG \n')
 
 def main():
     if(len(sys.argv) != 3):
         printHelp()
+
+    warnings.simplefilter('ignore', BiopythonWarning)
 
     fastq_filename = sys.argv[1]
     barcode_filename = None
@@ -30,12 +48,37 @@ def main():
         barcode_filename = sys.argv[2]
     if barcode_filename is not None:
         barcode_lines = open(barcode_filename, 'r').read().splitlines()
+        try:
+            if not len(barcode_lines) >= 2:
+                raise BarcodeSizeError
+            if ' ' in barcode_lines[0]:
+                raise BarcodeFormatError
+            #make a set of all chars in the barcode file
+            if not {l for line in barcode_lines for l in line} <= ALLOWED_CHARS:
+                raise BarcodeBadCharacterError
+        except BarcodeFormatError:
+            print('ERROR: barcode file incorrectly formatted.'
+                  '\nSee sample_barcode_file.txt for example of correct formatting.')
+            exit(1)
+        except BarcodeBadCharacterError:
+            print('ERROR: barcode file has illegal characters. Barcode file should'
+                  ' only contain "A", "C", "T", "G", spaces, and newlines.'
+                  '\nSee sample_barcode_file.txt for example of correct formatting.')
+            exit(1)
+        except BarcodeSizeError:
+            print('ERROR: barcode file must contain a target region and at least'
+                  ' one barcode.'
+                  '\nSee sample_barcode_file.txt for example of correct formatting.')
+            exit(1)
         barcodes = []
-        barcode_templates = []
-        for line in barcode_lines:
+        BARCODE_TEMPLATES = []
+        template = barcode_lines[0]
+        for line in barcode_lines[1:]:
             barcodes.append(line.split()[0])
-            barcode_templates.append(line.split()[1])
+            BARCODE_TEMPLATES.append(line.split()[1])
+        print('Target: {} ({})'.format(template, Seq(template, IUPAC.unambiguous_dna).translate()))
         print('Barcodes: {}'.format(barcodes))
+        print('Barcode templates: {}'.format(BARCODE_TEMPLATES))
 
     names = {}
     codon_seqs = {}
@@ -56,10 +99,7 @@ def main():
     sequence_end_missing = 0
     template_not_found = 0
     bad_reads = 0
-    TEMPLATE_SEQUENCE = 'ACCCTGTCCTGGTAGGAAGCCATGGACATGTGCACCGATACCGGA'
-    TEMPLATE_TRANSLATED = 'TLSW*EAMDMCTDTG'
-    BARCODE_SEQUENCES = ['GCTCGTATGTTGTGTGGAATTG',
-                         'GCTCGTAAGTTGTGTGGAATTG']
+    TEMPLATE_SEQUENCE = template#e.g. 'ACCCTGTCCTGGTAGGAAGCCATGGACATGTGCACCGATACCGGA'
 
     aligner = Align.PairwiseAligner()
     aligner.mode = 'local'
@@ -72,11 +112,12 @@ def main():
     with open(fastq_filename,'r') as f:
         # this parses a fastq file into names, sequences of DNA codons, 
         # and the quality score for the sequence transcription
+        print('Processing sequences...')
         for name, sequence, quality in fastqIterator(f):
             count += 1
             if 'N' not in sequence:
                 scores = [0, 0]
-                for i, barcode_seq in enumerate(BARCODE_SEQUENCES):
+                for i, barcode_seq in enumerate(BARCODE_TEMPLATES):
                     alignments = aligner.align(sequence, barcode_seq)
                     try:
                         scores[i] = (sorted(alignments)[-1].score)
