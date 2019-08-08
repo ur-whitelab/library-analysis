@@ -34,7 +34,7 @@ class BarcodeSizeError(Error):
     '''Raised when the barcode file is too small.'''
     pass
 
-ALLOWED_CHARS = set('ACTG \n')
+ALLOWED_CHARS = set('PARENT ACTG -\n')
 
 def main():
     if(len(sys.argv) != 3):
@@ -51,19 +51,24 @@ def main():
         try:
             if not len(barcode_lines) >= 2:
                 raise BarcodeSizeError
-            if ' ' in barcode_lines[0]:
+            if ' ' not in barcode_lines[0] or \
+            any([len(line.split()) != 3 for line in barcode_lines]):
                 raise BarcodeFormatError
             #make a set of all chars in the barcode file
-            if not {l for line in barcode_lines for l in line} <= ALLOWED_CHARS:
+            lineset = {l for line in barcode_lines for l in line}
+            if not lineset <= ALLOWED_CHARS:
                 raise BarcodeBadCharacterError
         except BarcodeFormatError:
             print('ERROR: barcode file incorrectly formatted.'
                   '\nSee sample_barcode_file.txt for example of correct formatting.')
             exit(1)
         except BarcodeBadCharacterError:
-            print('ERROR: barcode file has illegal characters. Barcode file should'
-                  ' only contain "A", "C", "T", "G", spaces, and newlines.'
-                  '\nSee sample_barcode_file.txt for example of correct formatting.')
+            print('ERROR: barcode file has illegal '
+                  'characters: {}\n'
+                  ' Barcode file should'
+                  ' only contain "A", "C", "T", "G", "-", "PARENT", spaces, and newlines.'
+                  '\nSee sample_barcode_file.txt for '
+                  'example of correct formatting.'.format(lineset - ALLOWED_CHARS))
             exit(1)
         except BarcodeSizeError:
             print('ERROR: barcode file must contain a target region and at least'
@@ -72,11 +77,16 @@ def main():
             exit(1)
         barcodes = []
         BARCODE_TEMPLATES = []
-        template = barcode_lines[0]
-        for line in barcode_lines[1:]:
+        SEQUENCE_TEMPLATES = []
+        for line in barcode_lines:
             barcodes.append(line.split()[0])
             BARCODE_TEMPLATES.append(line.split()[1])
-        print('Target: {} ({})'.format(template, Seq(template, IUPAC.unambiguous_dna).translate()))
+            SEQUENCE_TEMPLATES.append(line.split()[2])
+        print('Target templates: '
+              '{} ({})'.format(SEQUENCE_TEMPLATES,
+                               [Seq(template,
+                                    IUPAC.unambiguous_dna).translate()
+                                for template in SEQUENCE_TEMPLATES]))
         print('Barcodes: {}'.format(barcodes))
         print('Barcode templates: {}'.format(BARCODE_TEMPLATES))
 
@@ -99,7 +109,6 @@ def main():
     sequence_end_missing = 0
     template_not_found = 0
     bad_reads = 0
-    TEMPLATE_SEQUENCE = template#e.g. 'ACCCTGTCCTGGTAGGAAGCCATGGACATGTGCACCGATACCGGA'
 
     aligner = Align.PairwiseAligner()
     aligner.mode = 'local'
@@ -126,16 +135,19 @@ def main():
                 if scores[0] != 0 or scores[1] != 0:
                     maximal_idx = 0 if scores[0] > scores[1] else 1
                     this_barcode = barcodes[maximal_idx]
+                    this_template = SEQUENCE_TEMPLATES[maximal_idx]
                 else:
                     barcodes_missing += 1
                     misses += 1
                     continue
                 seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
-                alignments = aligner.align(sequence, TEMPLATE_SEQUENCE)
+                alignments = aligner.align(sequence, this_template)
                 split_alignment = str(sorted(alignments)[-1]).split('\n')
-                local_codon_idx = split_alignment[2].index(TEMPLATE_SEQUENCE[0])
+                #parse down the biopython output
+                #with such strong penalties for gaps, it will always be contiguous
+                local_codon_idx = split_alignment[2].index(this_template[0])
                 barcode_idx = None#codon_idx - 132
-                aligned_seq_str = split_alignment[0][local_codon_idx:local_codon_idx+len(TEMPLATE_SEQUENCE)]
+                aligned_seq_str = split_alignment[0][local_codon_idx:local_codon_idx+len(this_template)]
                 #screen for completely-missing first part of the sequence
                 if '.' not in aligned_seq_str and '-' not in aligned_seq_str:
                     #print(Seq(aligned_seq_str, IUPAC.unambiguous_dna).translate())
