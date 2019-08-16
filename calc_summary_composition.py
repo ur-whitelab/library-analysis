@@ -65,7 +65,7 @@ bottom = np.zeros(len(TEMPLATE_SEQ))
 colormap = get_cmap('tab20')
 
 for i in range(len(ALPHABET)):
-    plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i], color = colormap(float(i%(len(ALPHABET)-1))/float(len(ALPHABET)-1)))
+    plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i], color = colormap(float(i%(len(ALPHABET)-1))/float(len(ALPHABET)-1)), edgecolor='black')
     bottom += global_pos_counts[:,i]
 
 plt.xticks(x_indices, TEMPLATE_SEQ)

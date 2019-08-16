@@ -167,8 +167,13 @@ def main():
                     this_barcode='UNSORTED'
                     this_template = SEQUENCE_TEMPLATES[-1]#TODO: make this assigned manually?
                 seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
-                alignments = aligner.align(sequence, this_template)
-                split_alignment = str(sorted(alignments)[-1]).split('\n')
+                fwd_alignments = aligner.align(sequence, this_template)
+                rev_alignments = aligner.align(sequence[::-1], this_template)
+                split_fwd_alignment = str(sorted(fwd_alignments)[-1]).split('\n')
+                split_rev_alignment = str(sorted(rev_alignments)[-1]).split('\n')
+                fwd_score = sorted(fwd_alignments)[-1].score/float(len(this_template))
+                rev_score = sorted(rev_alignments)[-1].score/float(len(this_template))
+                split_alignment = split_fwd_alignment if fwd_score > rev_score else split_rev_alignment
                 codon_idx = split_alignment[2].index(this_template[0])
                 aligned_seq_str = split_alignment[0][codon_idx:codon_idx+len(this_template)]
                 #screen for completely-missing first part of the sequence
