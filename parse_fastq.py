@@ -43,9 +43,7 @@ def main():
     warnings.simplefilter('ignore', BiopythonWarning)
 
     fastq_filename = sys.argv[1]
-    barcode_filename = None
-    if len(sys.argv) == 3:
-        barcode_filename = sys.argv[2]
+    barcode_filename = sys.argv[2]
     if barcode_filename is not None:
         barcode_lines = open(barcode_filename, 'r').read().splitlines()
         try:
@@ -95,9 +93,7 @@ def main():
     misses = 0
     count = 0
     barcodes_missing = 0
-    bad_barcodes = 0
     sequence_end_missing = 0
-    template_not_found = 0
     bad_reads = 0
     TEMPLATE_SEQUENCE = template#e.g. 'ACCCTGTCCTGGTAGGAAGCCATGGACATGTGCACCGATACCGGA'
 
@@ -133,67 +129,33 @@ def main():
                 seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
                 alignments = aligner.align(sequence, TEMPLATE_SEQUENCE)
                 split_alignment = str(sorted(alignments)[-1]).split('\n')
-                local_codon_idx = split_alignment[2].index(TEMPLATE_SEQUENCE[0])
-                barcode_idx = None#codon_idx - 132
-                aligned_seq_str = split_alignment[0][local_codon_idx:local_codon_idx+len(TEMPLATE_SEQUENCE)]
+                codon_idx = split_alignment[2].index(TEMPLATE_SEQUENCE[0])
+                aligned_seq_str = split_alignment[0][codon_idx:codon_idx+len(TEMPLATE_SEQUENCE)]
                 #screen for completely-missing first part of the sequence
                 if '.' not in aligned_seq_str and '-' not in aligned_seq_str:
                     #print(Seq(aligned_seq_str, IUPAC.unambiguous_dna).translate())
                     translated_aligned_seq = (Seq(aligned_seq_str, IUPAC.unambiguous_dna).translate())
-                    codon_idx = str(sequence).index(aligned_seq_str)
-                    barcode_idx = codon_idx - 132
-                    aa_idx = codon_idx / 3
-                    #print('Codon idx: {}, barcode idx: {}'.format(codon_idx, barcode_idx))
                     names[this_barcode].append(name)
-                    codon_seqs[this_barcode].append(sequence[codon_idx:codon_idx + 45])
-                    qualities[this_barcode].append(quality[codon_idx:codon_idx + 45])
+                    codon_seqs[this_barcode].append(sequence[codon_idx:codon_idx +\
+                                                             len(TEMPLATE_SEQUENCE)])
+                    qualities[this_barcode].append(quality[codon_idx:codon_idx +\
+                                                           len(TEMPLATE_SEQUENCE)])
                     aa_seqs[this_barcode].append(translated_aligned_seq)
                     hits += 1
                 else:
                     misses += 1
                     sequence_end_missing += 1
-
-
-
-#                if (codon_idx is not None
-#                    and len(str(seq_str)[aa_idx:aa_idx + 15]) == 15
-#                    and barcode_idx >= 0) :
-#                    barcode = sequence[barcode_idx:barcode_idx + 3]
-#                    if barcode in barcodes:
-#                        names[barcode].append(name)
-#                        codon_seqs[barcode].append(sequence[codon_idx:codon_idx + 45])
-#                        qualities[barcode].append(quality[codon_idx:codon_idx + 45])
-#                        aa_seqs[barcode].append(translated_aligned_seq)
-#                        #print('barcode for {} is {}'.
-#                        #      format(aa_seqs[barcode][-1], barcode, sequence[6:9]))
-#                        hits += 1
-#                    else:
-#                        misses += 1
-#                        bad_barcodes += 1
-#                elif barcode_idx < 0:
-#                    misses += 1
-#                    barcodes_missing += 1
-#                elif len(str(seq_str)[aa_idx:aa_idx + 15]) != 15:
-#                    misses += 1
-#                    sequence_end_missing += 1
-#                elif codon_idx is None:
-#                    misses += 1
-#                    template_not_found += 1
             else:
                 misses += 1
                 bad_reads += 1
     print(
         'Hits: {}\nMisses: {}\n\
         Missing Barcodes: {}\n\
-        Incorrect Barcodes: {}\n\
         Incomplete Template Sequence: {}\n\
-        Template Not Found: {}\n\
         Low-Quality Reads: {}\nTotal: {}'.format(hits,
                                                  misses,
                                                  barcodes_missing,
-                                                 bad_barcodes,
                                                  sequence_end_missing,
-                                                 template_not_found,
                                                  bad_reads,
                                                  count)
     )
