@@ -124,10 +124,8 @@ def main():
                 scores = [0 for barcode in BARCODE_TEMPLATES]
                 for i, barcode_seq in enumerate(BARCODE_TEMPLATES):
                     barcode_alignments = aligner.align(sequence, barcode_seq)
-                    for item in sorted(barcode_alignments):
-                        print(item,
-                              item.score/float(len(SEQUENCE_TEMPLATES[0])),
-                              '\n\n')
+                    #for item in sorted(barcode_alignments):
+                    #    print(item,item.score/float(len(SEQUENCE_TEMPLATES[0])),'\n\n')
                     try:
                         scores[i] = (sorted(barcode_alignments)[-1].score)/float(len(SEQUENCE_TEMPLATES[i]))
                     except IndexError:
@@ -144,17 +142,17 @@ def main():
                 seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
                 alignments = aligner.align(sequence, this_template)
                 split_alignment = str(sorted(alignments)[-1]).split('\n')
-                codon_idx = split_alignment[2].index(TEMPLATE_SEQUENCE[0])
-                aligned_seq_str = split_alignment[0][codon_idx:codon_idx+len(TEMPLATE_SEQUENCE)]
+                codon_idx = split_alignment[2].index(this_template[0])
+                aligned_seq_str = split_alignment[0][codon_idx:codon_idx+len(this_template)]
                 #screen for completely-missing first part of the sequence
                 if '.' not in aligned_seq_str and '-' not in aligned_seq_str:
                     #print(Seq(aligned_seq_str, IUPAC.unambiguous_dna).translate())
                     translated_aligned_seq = (Seq(aligned_seq_str, IUPAC.unambiguous_dna).translate())
                     names[this_barcode].append(name)
                     codon_seqs[this_barcode].append(sequence[codon_idx:codon_idx +\
-                                                             len(TEMPLATE_SEQUENCE)])
+                                                             len(this_template)])
                     qualities[this_barcode].append(quality[codon_idx:codon_idx +\
-                                                           len(TEMPLATE_SEQUENCE)])
+                                                           len(this_template)])
                     aa_seqs[this_barcode].append(translated_aligned_seq)
                     hits += 1
                 else:
