@@ -3,19 +3,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import operator
 import pandas as pd
-import sys
+from sys import argv
 
 ALPHABET = ['A','R','N','D','C','Q','E','G','H','I', 'L','K','M','F','P','S','T','W','Y','V', '*']
-TEMPLATE_SEQ = "TLSW*EAMDMCTDTG"
 
-def pep_to_int_list( pep):
+def pep_to_int_list(pep):
     '''Takes a single string of amino acids and translates to a list of ints'''
     return(list(map(ALPHABET.index, pep.replace('\n', '')))) 
 
-if(len(sys.argv) != 2):
-    print('Usage: calc_summary_composition.py [target_AA_strings_file]. Must be formatted correctly.')
+if(len(argv) != 2):
+    print('Usage: calc_summary_composition.py [target_AA_seqs_file]. Must be formatted correctly.')
 
-fname = sys.argv[1]
+fname = argv[1]
+TEMPLATE_SEQ = argv[2] #e.g."TLSW*EAMDMCTDTG"
 
 with open(fname, 'r') as f:
     lines = f.readlines()

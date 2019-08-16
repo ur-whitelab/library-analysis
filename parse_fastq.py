@@ -82,8 +82,8 @@ def main():
             SEQUENCE_TEMPLATES.append(line.split()[2])
         print('Target templates: '
               '{} ({})'.format(SEQUENCE_TEMPLATES,
-                               [Seq(template,
-                                    IUPAC.unambiguous_dna).translate()
+                               [str(Seq(template,
+                                    IUPAC.unambiguous_dna).translate())
                                 for template in SEQUENCE_TEMPLATES]))
         print('Barcodes: {}'.format(barcodes))
         print('Barcode templates: {}'.format(BARCODE_TEMPLATES))
@@ -121,15 +121,20 @@ def main():
         for name, sequence, quality in fastqIterator(f):
             count += 1
             if 'N' not in sequence:
-                scores = [0, 0]
+                scores = [0 for barcode in BARCODE_TEMPLATES]
                 for i, barcode_seq in enumerate(BARCODE_TEMPLATES):
-                    alignments = aligner.align(sequence, barcode_seq)
+                    barcode_alignments = aligner.align(sequence, barcode_seq)
+                    for item in sorted(barcode_alignments):
+                        print(item,
+                              item.score/float(len(SEQUENCE_TEMPLATES[0])),
+                              '\n\n')
                     try:
-                        scores[i] = (sorted(alignments)[-1].score)
+                        scores[i] = (sorted(barcode_alignments)[-1].score)/float(len(SEQUENCE_TEMPLATES[i]))
                     except IndexError:
                         pass
-                if scores[0] != 0 or scores[1] != 0:
-                    maximal_idx = 0 if scores[0] > scores[1] else 1
+                # make sure we have at least one score above some cutoff
+                if any(scores) and max(scores) > 0.8: 
+                    maximal_idx = scores.index(max(scores))
                     this_barcode = barcodes[maximal_idx]
                     this_template = SEQUENCE_TEMPLATES[maximal_idx]
                 else:
