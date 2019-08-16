@@ -11,8 +11,9 @@ def pep_to_int_list(pep):
     '''Takes a single string of amino acids and translates to a list of ints'''
     return(list(map(ALPHABET.index, pep.replace('\n', '')))) 
 
-if(len(argv) != 2):
+if(len(argv) != 3):
     print('Usage: calc_summary_composition.py [target_AA_seqs_file]. Must be formatted correctly.')
+    exit(1)
 
 fname = argv[1]
 TEMPLATE_SEQ = argv[2] #e.g."TLSW*EAMDMCTDTG"
@@ -22,8 +23,6 @@ with open(fname, 'r') as f:
 
 for i in range(len(lines)):
     lines[i] = lines[i].replace('\n','')
-
-print(lines)
 
 #do summary
 
@@ -38,8 +37,6 @@ for line in lines:
         summary_dict[line] += 1
 
 sorted_summary = sorted(summary_dict.items(), key = operator.itemgetter(1), reverse=True)
-
-print(sorted_summary[:100])
 
 with open('{}_SUMMARY.txt'.format(fname.split('.')[0]), 'w+') as f:
     for item in sorted_summary:
@@ -68,7 +65,7 @@ bottom = np.zeros(len(TEMPLATE_SEQ))
 colormap = get_cmap('tab20')
 
 for i in range(len(ALPHABET)):
-    plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i], color = colormap(float(i)/20.))
+    plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i], color = colormap(float(i%(len(ALPHABET)-1))/float(len(ALPHABET)-1)))
     bottom += global_pos_counts[:,i]
 
 plt.xticks(x_indices, TEMPLATE_SEQ)

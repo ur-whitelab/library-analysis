@@ -34,6 +34,36 @@ class BarcodeSizeError(Error):
     '''Raised when the barcode file is too small.'''
     pass
 
+def find_barcode_and_template(sequence, aligner, barcodes, barcode_templates,
+                              sequence_templates, cutoff=0.8, retry=True):
+    '''Given a BioPython aligner instance, a set of barcodes to look for, and a set of
+       target sequences to check, and an alignment "score" cutoff, try to find a good
+       barcode and target sequence alignment. If no barcode alignment scores above cutoff,
+       will try to align with the reversed sequence instead. If that doesn't work either,
+       returns None. Else, returns the barcode and aligned targe sequence.'''
+    scores = [0 for barcode in barcode_templates]
+    barcode, template = None, None
+    for i, barcode_seq in enumerate(barcode_templates):
+        barcode_alignments = aligner.align(sequence, barcode_seq)
+        try:
+            scores[i] = (sorted(barcode_alignments)[-1].score)/float(len(sequence_templates[i]))
+        except IndexError:
+            pass
+    # make sure we have at least one score above some cutoff
+    if any(scores) and max(scores) > cutoff: 
+        maximal_idx = scores.index(max(scores))
+        barcode = barcodes[maximal_idx]
+        template = sequence_templates[maximal_idx]
+    elif retry:
+        # recurse once with reversed sequence
+        barcode, template = find_barcode_and_template(sequence[::-1],
+                                                      aligner,
+                                                      barcodes,
+                                                      barcode_templates,
+                                                      sequence_templates,
+                                                      retry=False)
+    return(barcode, template)
+
 ALLOWED_CHARS = set('PARENT ACTG -\n')
 
 def main():
@@ -73,11 +103,11 @@ def main():
                   ' one barcode.'
                   '\nSee sample_barcode_file.txt for example of correct formatting.')
             exit(1)
-        barcodes = []
+        BARCODES = []
         BARCODE_TEMPLATES = []
         SEQUENCE_TEMPLATES = []
         for line in barcode_lines:
-            barcodes.append(line.split()[0])
+            BARCODES.append(line.split()[0])
             BARCODE_TEMPLATES.append(line.split()[1])
             SEQUENCE_TEMPLATES.append(line.split()[2])
         print('Target templates: '
@@ -85,7 +115,7 @@ def main():
                                [str(Seq(template,
                                     IUPAC.unambiguous_dna).translate())
                                 for template in SEQUENCE_TEMPLATES]))
-        print('Barcodes: {}'.format(barcodes))
+        print('Barcodes: {}'.format(BARCODES))
         print('Barcode templates: {}'.format(BARCODE_TEMPLATES))
 
     names = {}
@@ -93,12 +123,16 @@ def main():
     aa_seqs = {}
     qualities = {}
 
-    for barcode in barcodes:
+    for barcode in BARCODES:
         names[barcode] = []
         codon_seqs[barcode] = []
         aa_seqs[barcode] = []
         qualities[barcode] = []
-
+    names['UNSORTED'] = []
+    codon_seqs['UNSORTED'] = []
+    aa_seqs['UNSORTED'] = []
+    qualities['UNSORTED'] = []
+    
     hits = 0
     misses = 0
     count = 0
@@ -121,24 +155,17 @@ def main():
         for name, sequence, quality in fastqIterator(f):
             count += 1
             if 'N' not in sequence:
-                scores = [0 for barcode in BARCODE_TEMPLATES]
-                for i, barcode_seq in enumerate(BARCODE_TEMPLATES):
-                    barcode_alignments = aligner.align(sequence, barcode_seq)
-                    #for item in sorted(barcode_alignments):
-                    #    print(item,item.score/float(len(SEQUENCE_TEMPLATES[0])),'\n\n')
-                    try:
-                        scores[i] = (sorted(barcode_alignments)[-1].score)/float(len(SEQUENCE_TEMPLATES[i]))
-                    except IndexError:
-                        pass
-                # make sure we have at least one score above some cutoff
-                if any(scores) and max(scores) > 0.8: 
-                    maximal_idx = scores.index(max(scores))
-                    this_barcode = barcodes[maximal_idx]
-                    this_template = SEQUENCE_TEMPLATES[maximal_idx]
-                else:
+                this_barcode, this_template = find_barcode_and_template(sequence=sequence,
+                                                                        aligner=aligner,
+                                                                        barcodes=BARCODES,
+                                                                        barcode_templates=BARCODE_TEMPLATES,
+                                                                        sequence_templates=SEQUENCE_TEMPLATES)
+                if this_barcode is None or this_template is None:
                     barcodes_missing += 1
                     misses += 1
-                    continue
+                    #continue
+                    this_barcode='UNSORTED'
+                    this_template = SEQUENCE_TEMPLATES[-1]#TODO: make this assigned manually?
                 seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
                 alignments = aligner.align(sequence, this_template)
                 split_alignment = str(sorted(alignments)[-1]).split('\n')
@@ -154,9 +181,10 @@ def main():
                     qualities[this_barcode].append(quality[codon_idx:codon_idx +\
                                                            len(this_template)])
                     aa_seqs[this_barcode].append(translated_aligned_seq)
-                    hits += 1
-                else:
-                    misses += 1
+                    if this_barcode != 'UNSORTED':
+                        hits += 1
+                elif this_barcode != 'UNSORTED':
+                    misses += 1 
                     sequence_end_missing += 1
             else:
                 misses += 1
@@ -173,7 +201,8 @@ def main():
                                                  count)
     )
 
-    for barcode in barcodes:
+    BARCODES.append('UNSORTED')
+    for barcode in BARCODES:
         filename = fastq_filename.split('.')[0] + '_{}'.format(barcode)
         with open(filename +'_LABELS.txt', 'w+') as f:
             for name in names[barcode]:
