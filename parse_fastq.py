@@ -160,6 +160,14 @@ def main():
                                                                         barcodes=BARCODES,
                                                                         barcode_templates=BARCODE_TEMPLATES,
                                                                         sequence_templates=SEQUENCE_TEMPLATES)
+                # if we couldn't find in forward or reverse, try complement
+                if this_barcode is None or this_template is None:
+                    this_barcode, this_template = find_barcode_and_template(sequence=str(Seq(sequence).complement()),
+                                                                        aligner=aligner,
+                                                                        barcodes=BARCODES,
+                                                                        barcode_templates=BARCODE_TEMPLATES,
+                                                                        sequence_templates=SEQUENCE_TEMPLATES)
+                # if we still can't find barcodes even in complementary space, it's unsorted
                 if this_barcode is None or this_template is None:
                     barcodes_missing += 1
                     misses += 1
@@ -167,13 +175,38 @@ def main():
                     this_barcode='UNSORTED'
                     this_template = SEQUENCE_TEMPLATES[-1]#TODO: make this assigned manually?
                 seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
-                fwd_alignments = aligner.align(sequence, this_template)
-                rev_alignments = aligner.align(sequence[::-1], this_template)
+                # do alignments forward and reverse, and complements
+                fwd_alignments = aligner.align(sequence,
+                                               this_template)
+                rev_alignments = aligner.align(sequence[::-1],
+                                               this_template)
+                comp_alignments = aligner.align(Seq(sequence).complement(),
+                                                this_template)
+                comp_rev_alignments = aligner.align(Seq(sequence[::-1]).complement(),
+                                                    this_template)
+                # split the best alignment into seq, arrows, target
                 split_fwd_alignment = str(sorted(fwd_alignments)[-1]).split('\n')
                 split_rev_alignment = str(sorted(rev_alignments)[-1]).split('\n')
+                split_comp_alignment = str(sorted(comp_alignments)[-1]).split('\n')
+                split_comp_rev_alignment = str(sorted(comp_rev_alignments)[-1]).split('\n')
+                # get scores for all the alignments
                 fwd_score = sorted(fwd_alignments)[-1].score/float(len(this_template))
                 rev_score = sorted(rev_alignments)[-1].score/float(len(this_template))
-                split_alignment = split_fwd_alignment if fwd_score > rev_score else split_rev_alignment
+                comp_score = sorted(comp_alignments)[-1].score/float(len(this_template))
+                comp_rev_score = sorted(comp_rev_alignments)[-1].score/float(len(this_template))
+                # gater the split alignments and scores together so we can pick the best
+                split_alignments = [split_fwd_alignment,
+                                    split_rev_alignment,
+                                    split_comp_alignment,
+                                    split_comp_rev_alignment]
+                scores = [fwd_score,
+                          rev_score,
+                          comp_score,
+                          comp_rev_score]
+                # find best alignment based on scores
+                best_score_idx = scores.index(max(scores))
+                split_alignment = split_alignments[best_score_idx]
+                # get the part of the sequence where the alignment lies
                 codon_idx = split_alignment[2].index(this_template[0])
                 aligned_seq_str = split_alignment[0][codon_idx:codon_idx+len(this_template)]
                 #screen for completely-missing first part of the sequence
