@@ -10,8 +10,8 @@ mkdir $DIRNAME
 cp $1 "$DIRNAME"
 cp $2 "$DIRNAME"
 cd $DIRNAME
-python3 ../parse_fastq.py $1 $2
+python ../parse_fastq.py $1 $2
 for a in $(ls *SEQS.txt)
 do
-    python3 ../calc_summary_composition.py $a $2
+    python ../calc_summary_composition.py $a $2
 done
