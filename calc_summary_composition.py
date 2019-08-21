@@ -31,9 +31,6 @@ for line in lines:
     elif barcode == 'UNSORTED':
         TEMPLATE_SEQ = '*'*(len(str(Seq(lines[0].split()[2],
                                     IUPAC.unambiguous_dna).translate())) - 1)
-print('template seq: {}'.format(TEMPLATE_SEQ))
-
-#TODO: read in the [whatever]barcodes.txt file 
 
 with open(seqs_fname, 'r') as f:
     lines = f.read().splitlines()
@@ -69,15 +66,11 @@ for i in range(len(peptide_ints)):
 np.savetxt('{}_RAW_COMPOSITION.txt'.format(seqs_fname.split('.')[0]), global_pos_counts)
 
 #make stacked bar chart
-x_indices = np.arange(len(TEMPLATE_SEQ))
+x_indices = np.arange(global_pos_counts.shape[0])
 plots = []
 width = 0.35
-bottom = np.zeros(len(TEMPLATE_SEQ))
+bottom = np.zeros(global_pos_counts.shape[0])
 colormap = get_cmap('tab20')
-
-print('x_indices shape: {}'.format(x_indices.shape))
-print('global_pos_counts shape: {}'.format(global_pos_counts.shape))
-print('ALPHABET: {}'.format(ALPHABET))
 
 for i in range(len(ALPHABET)):
     plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i], color = colormap(float(i%(len(ALPHABET)-1))/float(len(ALPHABET)-1)), edgecolor='black')
