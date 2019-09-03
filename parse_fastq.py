@@ -103,20 +103,37 @@ def main():
                   ' one barcode.'
                   '\nSee sample_barcode_file.txt for example of correct formatting.')
             exit(1)
-        BARCODES = []
-        BARCODE_TEMPLATES = []
-        SEQUENCE_TEMPLATES = []
+        #IDEA: dict keyed by barcode with all corresponding barcode and sequence templates within
+        #E.G. {"ACT-TTG": [ [<BARCODE_TEMPLATE_FORWARD>, <BARCODE_TEMPLATE_FWD_TRANSCRIBED>, <BARCODE_TEMPLATE_REVERSE>, <BARCODE_TEMPLATE_REV_TRANSCRIBED>] ,
+        #                   [<SEQUENCE_TEMPLATE_FORWARD>, SEQUENCE_TEMPLATE_FWD_TRANSCRIBED>, <SEQUENCE_TEMPLATE_REVERSE, <SEQUCENCE_TEMPLATE_REV_TRANSCRIBED>]
+        #                 ]
+        #      ... et cetera
+        #     }
+        BARCODES = {}
         for line in barcode_lines:
-            BARCODES.append(line.split()[0])
-            BARCODE_TEMPLATES.append(line.split()[1])
-            SEQUENCE_TEMPLATES.append(line.split()[2])
-        print('Target templates: '
-              '{} ({})'.format(SEQUENCE_TEMPLATES,
-                               [str(Seq(template,
-                                    IUPAC.unambiguous_dna).translate())
-                                for template in SEQUENCE_TEMPLATES]))
-        print('Barcodes: {}'.format(BARCODES))
-        print('Barcode templates: {}'.format(BARCODE_TEMPLATES))
+            barcode = line.split()[0] 
+            BARCODES[barcode] = [ [], [] ] # one for barcode templates, one with sequence templates
+            barcode_template = line.split()[1]
+            BARCODES[barcode][0].append(barcode_template) # forward barcode template
+            BARCODES[barcode][0].append(barcode_template[::-1]) # reverse barcode template
+            BARCODES[barcode][0].append(str(Seq(barcode_template).complement())) # 'reverse' barcode complement
+            BARCODES[barcode][0].append(str(Seq(barcode_template).complement())[::-1]) # 'normal' barcode complement
+            sequence_template = line.split()[2]
+            BARCODES[barcode][1].append(sequence_template)# forward sequence template
+            BARCODES[barcode][1].append(sequence_template[::-1]) # reverse sequence template
+            BARCODES[barcode][1].append(str(Seq(sequence_template).complement())) # 'reverse' sequence complement
+            BARCODES[barcode][1].append(str(Seq(sequence_template).complement())[::-1]) # 'normal' sequence complement
+        print('Barcodes: {}'.format(BARCODES.keys()))
+        print('Barcode templates: ')
+        for barcode in BARCODES:
+            template = str(Seq(BARCODES[barcode][0][0], IUPAC.unambiguous_dna))
+            translated_template = str(Seq(BARCODES[barcode][0][0], IUPAC.unambiguous_dna).translate())
+            print('{} ({})'.format(template, translated_template))
+        print('Target templates: ')
+        for barcode in BARCODES:
+            template = str(Seq(BARCODES[barcode][1][0], IUPAC.unambiguous_dna))
+            translated_template = str(Seq(BARCODES[barcode][1][0], IUPAC.unambiguous_dna).translate())
+            print('{} ({})'.format(template, translated_template))
 
     names = {}
     codon_seqs = {}
