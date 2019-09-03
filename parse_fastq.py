@@ -96,35 +96,41 @@ def read_data(barcodes_file):
         print('{} ({})'.format(template, translated_template))
     return barcodes
 
-def find_barcode_and_template(sequence, aligner, barcodes, barcode_templates,
-                              sequence_templates, cutoff=0.8, retry=True):
+def find_barcode_and_template(sequence, aligner, barcode_dict, cutoff=0.8):
     '''Given a BioPython aligner instance, and a data dictionary as per read_data(),
        and an alignment "score" cutoff, try to find a good barcode and target sequence alignment.
        If no barcode alignment scores above cutoff, will try to align with the reversed sequence
        instead. If that doesn't work either, returns None. Else, returns the barcode and aligned 
        target sequence.'''
-    scores = [0 for barcode in barcode_templates]
-    barcode, template = None, None
-    for i, barcode_seq in enumerate(barcode_templates):
-        barcode_alignments = aligner.align(sequence, barcode_seq)
-        try:
-            scores[i] = (sorted(barcode_alignments)[-1].score)/float(len(sequence_templates[i]))
-        except IndexError:
-            pass
-    # make sure we have at least one score above some cutoff
-    if any(scores) and max(scores) > cutoff: 
-        maximal_idx = scores.index(max(scores))
-        barcode = barcodes[maximal_idx]
-        template = sequence_templates[maximal_idx]
-    elif retry:
-        # recurse once with reversed sequence
-        barcode, template = find_barcode_and_template(sequence[::-1],
-                                                      aligner,
-                                                      barcodes,
-                                                      barcode_templates,
-                                                      sequence_templates,
-                                                      retry=False)
-    return(barcode, template)
+    # return the barcode we belong to (highest score) and its template 
+    # also return the index of which direction was best, 
+    # so we know which one to use for the target region
+    scores = [0 for barcode in barcode_dict.keys()] # one score per barcode
+    directions = [0 for score in scores]
+    best_barcode, best_template, best_direction_idx = None, None, None
+    # iterate over all barcodes
+    for i, barcode in enumerate(barcode_dict.keys()):
+        this_barcode_scores = [0 for item in barcode_dict[barcode]]
+        # iterate over all directions for that barcode alignment
+        for barcode_seq in barcode_dict[barcode][0]:
+            barcode_alignments = aligner.align(sequence, barcode_seq)
+            try:
+                this_barcode_scores[i] = (sorted(barcode_alignments)[-1].score)/float(len(barcode_dict[barcode][0]))
+            except IndexError:
+                pass
+        # make sure we have at least one score above some cutoff
+        if any(this_barcode_scores) and max(this_barcode_scores) > cutoff: 
+            maximal_idx = this_barcode_scores.index(max(this_barcode_scores))
+            scores[i] = this_barcode_scores[maximal_idx] # update per-barcode scores
+            directions[i] = maximal_idx # track the direction for later
+    # now get the maximum overall score and its direction of translation
+    if any(scores) and max(scores) > cutoff:
+        best_score = max(scores)
+        best_score_idx = scores.index(best_score)
+        best_direction = directions[best_score_idx] # defaults to 0 ('forward') if no score is above cutoff
+        best_barcode = barcode_dict.keys()[best_score_idx]
+        best_template = barcode_dict[barcode][1][best_direction] # this will default to forward if it's not set
+    return(best_barcode, best_template, best_direction)
 
 ALLOWED_CHARS = set('PARENT ACTG -\n')
 
@@ -176,57 +182,54 @@ def main():
         for name, sequence, quality in fastqIterator(f):
             count += 1
             if 'N' not in sequence:
-                this_barcode, this_template = find_barcode_and_template(sequence=sequence,
+                # sort this sequence into a barcode class (or none if no good scores)
+                this_barcode, this_template, this_direction = find_barcode_and_template(sequence=sequence,
                                                                         aligner=aligner,
-                                                                        barcodes=BARCODES,
-                                                                        barcode_templates=BARCODE_TEMPLATES,
-                                                                        sequence_templates=SEQUENCE_TEMPLATES)
-                # if we couldn't find in forward or reverse, try complement
-                if this_barcode is None or this_template is None:
-                    this_barcode, this_template = find_barcode_and_template(sequence=str(Seq(sequence).complement()),
-                                                                        aligner=aligner,
-                                                                        barcodes=BARCODES,
-                                                                        barcode_templates=BARCODE_TEMPLATES,
-                                                                        sequence_templates=SEQUENCE_TEMPLATES)
+                                                                        barcode_dict=BARCODES)
                 # if we still can't find barcodes even in complementary space, it's unsorted
                 if this_barcode is None or this_template is None:
                     barcodes_missing += 1
                     misses += 1
-                    #continue
                     this_barcode='UNSORTED'
-                    this_template = SEQUENCE_TEMPLATES[-1]#TODO: make this assigned manually?
-                seq_str = str(Seq(sequence, IUPAC.unambiguous_dna).translate())
-                # do alignments forward and reverse, and complements
-                fwd_alignments = aligner.align(sequence,
-                                               this_template)
-                rev_alignments = aligner.align(sequence[::-1],
-                                               this_template)
-                comp_alignments = aligner.align(Seq(sequence).complement(),
-                                                this_template)
-                comp_rev_alignments = aligner.align(Seq(sequence[::-1]).complement(),
+                    this_template = BARCODES[BARCODES.keys()[0]][1][0]#TODO: make this assigned manually?
+                    # since we don't know the correct direction, do alignments forward and reverse, and complements
+                    fwd_alignments = aligner.align(sequence,
+                                                   this_template)
+                    rev_alignments = aligner.align(sequence[::-1],
+                                                   this_template)
+                    comp_alignments = aligner.align(Seq(sequence).complement(),
                                                     this_template)
-                # split the best alignment into seq, arrows, target
-                split_fwd_alignment = str(sorted(fwd_alignments)[-1]).split('\n')
-                split_rev_alignment = str(sorted(rev_alignments)[-1]).split('\n')
-                split_comp_alignment = str(sorted(comp_alignments)[-1]).split('\n')
-                split_comp_rev_alignment = str(sorted(comp_rev_alignments)[-1]).split('\n')
-                # get scores for all the alignments
-                fwd_score = sorted(fwd_alignments)[-1].score/float(len(this_template))
-                rev_score = sorted(rev_alignments)[-1].score/float(len(this_template))
-                comp_score = sorted(comp_alignments)[-1].score/float(len(this_template))
-                comp_rev_score = sorted(comp_rev_alignments)[-1].score/float(len(this_template))
-                # gater the split alignments and scores together so we can pick the best
-                split_alignments = [split_fwd_alignment,
-                                    split_rev_alignment,
-                                    split_comp_alignment,
-                                    split_comp_rev_alignment]
-                scores = [fwd_score,
-                          rev_score,
-                          comp_score,
-                          comp_rev_score]
-                # find best alignment based on scores
-                best_score_idx = scores.index(max(scores))
-                split_alignment = split_alignments[best_score_idx]
+                    comp_rev_alignments = aligner.align(Seq(sequence[::-1]).complement(),
+                                                        this_template)
+                    # split the best alignment into seq, arrows, target
+                    split_fwd_alignment = str(sorted(fwd_alignments)[-1]).split('\n')
+                    split_rev_alignment = str(sorted(rev_alignments)[-1]).split('\n')
+                    split_comp_alignment = str(sorted(comp_alignments)[-1]).split('\n')
+                    split_comp_rev_alignment = str(sorted(comp_rev_alignments)[-1]).split('\n')
+                    # get scores for all the alignments
+                    fwd_score = sorted(fwd_alignments)[-1].score/float(len(this_template))
+                    rev_score = sorted(rev_alignments)[-1].score/float(len(this_template))
+                    comp_score = sorted(comp_alignments)[-1].score/float(len(this_template))
+                    comp_rev_score = sorted(comp_rev_alignments)[-1].score/float(len(this_template))
+                    # gater the split alignments and scores together so we can pick the best
+                    split_alignments = [split_fwd_alignment,
+                                        split_rev_alignment,
+                                        split_comp_alignment,
+                                        split_comp_rev_alignment]
+                    scores = [fwd_score,
+                              rev_score,
+                              comp_score,
+                              comp_rev_score]
+                    # find best alignment based on scores
+                    best_score_idx = scores.index(max(scores))
+                    split_alignment = split_alignments[best_score_idx]
+                else:
+                    sequence_variations = [ sequence,
+                                            sequence[::-1],
+                                            str(Seq(sequence, IUPAC.unambiguous_dna)),
+                                            str(Seq(sequence[::-1], IUPAC.unambiguous_dna)) ]
+                    alignments = aligner.align(sequence_variations[this_direction], this_template)
+                    split_alignment = str(sorted(alignments)[-1]).split('\n')
                 # get the part of the sequence where the alignment lies
                 codon_idx = split_alignment[2].index(this_template[0])
                 aligned_seq_str = split_alignment[0][codon_idx:codon_idx+len(this_template)]
@@ -259,9 +262,9 @@ def main():
                                                  bad_reads,
                                                  count)
     )
-
-    BARCODES.append('UNSORTED')
-    for barcode in BARCODES:
+    barcodes_list = list(BARCODES.keys())
+    barcodes_list.append('UNSORTED')
+    for barcode in barcodes_list:
         filename = fastq_filename.split('.')[0] + '_{}'.format(barcode)
         with open(filename +'_LABELS.txt', 'w+') as f:
             for name in names[barcode]:
