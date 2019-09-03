@@ -34,13 +34,75 @@ class BarcodeSizeError(Error):
     '''Raised when the barcode file is too small.'''
     pass
 
+def read_data(barcodes_file):
+    barcode_lines = open(barcodes_file, 'r').read().splitlines()
+    try:
+        if not len(barcode_lines) >= 2:
+            raise BarcodeSizeError
+        if ' ' not in barcode_lines[0] or \
+        any([len(line.split()) != 3 for line in barcode_lines]):
+            raise BarcodeFormatError
+        #make a set of all chars in the barcode file
+        lineset = {l for line in barcode_lines for l in line}
+        if not lineset <= ALLOWED_CHARS:
+            raise BarcodeBadCharacterError
+    except BarcodeFormatError:
+        print('ERROR: barcode file incorrectly formatted.'
+              '\nSee sample_barcode_file.txt for example of correct formatting.')
+        exit(1)
+    except BarcodeBadCharacterError:
+        print('ERROR: barcode file has illegal '
+              'characters: {}\n'
+              ' Barcode file should'
+              ' only contain "A", "C", "T", "G", "-", "PARENT", spaces, and newlines.'
+              '\nSee sample_barcode_file.txt for '
+              'example of correct formatting.'.format(lineset - ALLOWED_CHARS))
+        exit(1)
+    except BarcodeSizeError:
+        print('ERROR: barcode file must contain a target region and at least'
+              ' one barcode.'
+              '\nSee sample_barcode_file.txt for example of correct formatting.')
+        exit(1)
+    #IDEA: dict keyed by barcode with all corresponding barcode and sequence templates within
+    #E.G. {"ACT-TTG": [ [<BARCODE_TEMPLATE_FORWARD>, <BARCODE_TEMPLATE_FWD_TRANSCRIBED>, <BARCODE_TEMPLATE_REVERSE>, <BARCODE_TEMPLATE_REV_TRANSCRIBED>] ,
+    #                   [<SEQUENCE_TEMPLATE_FORWARD>, SEQUENCE_TEMPLATE_FWD_TRANSCRIBED>, <SEQUENCE_TEMPLATE_REVERSE, <SEQUCENCE_TEMPLATE_REV_TRANSCRIBED>]
+    #                 ]
+    #      ... et cetera
+    #     }
+    barcodes = {}
+    for line in barcode_lines:
+        barcode = line.split()[0]
+        barcodes[barcode] = [ [], [] ] # one for barcode templates, one with sequence templates
+        barcode_template = line.split()[1]
+        barcodes[barcode][0].append(barcode_template) # forward barcode template
+        barcodes[barcode][0].append(barcode_template[::-1]) # reverse barcode template
+        barcodes[barcode][0].append(str(Seq(barcode_template).complement())) # 'reverse' barcode complement
+        barcodes[barcode][0].append(str(Seq(barcode_template).complement())[::-1]) # 'normal' barcode complement
+        sequence_template = line.split()[2]
+        barcodes[barcode][1].append(sequence_template)# forward sequence template
+        barcodes[barcode][1].append(sequence_template[::-1]) # reverse sequence template
+        barcodes[barcode][1].append(str(Seq(sequence_template).complement())) # 'reverse' sequence complement
+        barcodes[barcode][1].append(str(Seq(sequence_template).complement())[::-1]) # 'normal' sequence complement
+    print('Barcodes: {}'.format(barcodes.keys()))
+    print('Barcode templates: ')
+    for barcode in barcodes:
+        template = str(Seq(barcodes[barcode][0][0], IUPAC.unambiguous_dna))
+        translated_template = str(Seq(barcodes[barcode][0][0], IUPAC.unambiguous_dna).translate())
+        print('{} ({})'.format(template, translated_template))
+    print('Target templates: ')
+    for barcode in barcodes:
+        template = str(Seq(barcodes[barcode][1][0], IUPAC.unambiguous_dna))
+        translated_template = str(Seq(barcodes[barcode][1][0], IUPAC.unambiguous_dna).translate())
+        print('{} ({})'.format(template, translated_template))
+    return barcodes
+
 def find_barcode_and_template(sequence, aligner, barcodes, barcode_templates,
                               sequence_templates, cutoff=0.8, retry=True):
-    '''Given a BioPython aligner instance, a set of barcodes to look for, and a set of
-       target sequences to check, and an alignment "score" cutoff, try to find a good
-       barcode and target sequence alignment. If no barcode alignment scores above cutoff,
-       will try to align with the reversed sequence instead. If that doesn't work either,
-       returns None. Else, returns the barcode and aligned targe sequence.'''
+    '''Given a BioPython aligner instance, and a data dictionary as per read_data(),
+       and an alignment "score" cutoff, try to find a good barcode and target sequence alignment.
+       If no barcode alignment scores above cutoff, will try to align with the reversed sequence
+       instead. If that doesn't work either, returns None. Else, returns the barcode and aligned 
+       target sequence.'''
     scores = [0 for barcode in barcode_templates]
     barcode, template = None, None
     for i, barcode_seq in enumerate(barcode_templates):
@@ -75,65 +137,7 @@ def main():
     fastq_filename = sys.argv[1]
     barcode_filename = sys.argv[2]
     if barcode_filename is not None:
-        barcode_lines = open(barcode_filename, 'r').read().splitlines()
-        try:
-            if not len(barcode_lines) >= 2:
-                raise BarcodeSizeError
-            if ' ' not in barcode_lines[0] or \
-            any([len(line.split()) != 3 for line in barcode_lines]):
-                raise BarcodeFormatError
-            #make a set of all chars in the barcode file
-            lineset = {l for line in barcode_lines for l in line}
-            if not lineset <= ALLOWED_CHARS:
-                raise BarcodeBadCharacterError
-        except BarcodeFormatError:
-            print('ERROR: barcode file incorrectly formatted.'
-                  '\nSee sample_barcode_file.txt for example of correct formatting.')
-            exit(1)
-        except BarcodeBadCharacterError:
-            print('ERROR: barcode file has illegal '
-                  'characters: {}\n'
-                  ' Barcode file should'
-                  ' only contain "A", "C", "T", "G", "-", "PARENT", spaces, and newlines.'
-                  '\nSee sample_barcode_file.txt for '
-                  'example of correct formatting.'.format(lineset - ALLOWED_CHARS))
-            exit(1)
-        except BarcodeSizeError:
-            print('ERROR: barcode file must contain a target region and at least'
-                  ' one barcode.'
-                  '\nSee sample_barcode_file.txt for example of correct formatting.')
-            exit(1)
-        #IDEA: dict keyed by barcode with all corresponding barcode and sequence templates within
-        #E.G. {"ACT-TTG": [ [<BARCODE_TEMPLATE_FORWARD>, <BARCODE_TEMPLATE_FWD_TRANSCRIBED>, <BARCODE_TEMPLATE_REVERSE>, <BARCODE_TEMPLATE_REV_TRANSCRIBED>] ,
-        #                   [<SEQUENCE_TEMPLATE_FORWARD>, SEQUENCE_TEMPLATE_FWD_TRANSCRIBED>, <SEQUENCE_TEMPLATE_REVERSE, <SEQUCENCE_TEMPLATE_REV_TRANSCRIBED>]
-        #                 ]
-        #      ... et cetera
-        #     }
-        BARCODES = {}
-        for line in barcode_lines:
-            barcode = line.split()[0] 
-            BARCODES[barcode] = [ [], [] ] # one for barcode templates, one with sequence templates
-            barcode_template = line.split()[1]
-            BARCODES[barcode][0].append(barcode_template) # forward barcode template
-            BARCODES[barcode][0].append(barcode_template[::-1]) # reverse barcode template
-            BARCODES[barcode][0].append(str(Seq(barcode_template).complement())) # 'reverse' barcode complement
-            BARCODES[barcode][0].append(str(Seq(barcode_template).complement())[::-1]) # 'normal' barcode complement
-            sequence_template = line.split()[2]
-            BARCODES[barcode][1].append(sequence_template)# forward sequence template
-            BARCODES[barcode][1].append(sequence_template[::-1]) # reverse sequence template
-            BARCODES[barcode][1].append(str(Seq(sequence_template).complement())) # 'reverse' sequence complement
-            BARCODES[barcode][1].append(str(Seq(sequence_template).complement())[::-1]) # 'normal' sequence complement
-        print('Barcodes: {}'.format(BARCODES.keys()))
-        print('Barcode templates: ')
-        for barcode in BARCODES:
-            template = str(Seq(BARCODES[barcode][0][0], IUPAC.unambiguous_dna))
-            translated_template = str(Seq(BARCODES[barcode][0][0], IUPAC.unambiguous_dna).translate())
-            print('{} ({})'.format(template, translated_template))
-        print('Target templates: ')
-        for barcode in BARCODES:
-            template = str(Seq(BARCODES[barcode][1][0], IUPAC.unambiguous_dna))
-            translated_template = str(Seq(BARCODES[barcode][1][0], IUPAC.unambiguous_dna).translate())
-            print('{} ({})'.format(template, translated_template))
+        BARCODES = read_data(barcode_filename)
 
     names = {}
     codon_seqs = {}
