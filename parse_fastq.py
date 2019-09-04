@@ -110,12 +110,17 @@ def find_barcode_and_template(sequence, aligner, barcode_dict, cutoff=0.8):
     best_barcode, best_template, best_direction_idx = None, None, None
     # iterate over all barcodes
     for i, barcode in enumerate(barcode_dict.keys()):
-        this_barcode_scores = [0 for item in barcode_dict[barcode]]
-        # iterate over all directions for that barcode alignment
-        for barcode_seq in barcode_dict[barcode][0]:
-            barcode_alignments = aligner.align(sequence, barcode_seq)
+        # iterate over all directions/complements for barcode alignment
+        barcode_seq = barcode_dict[barcode][0][0] # forward only
+        sequence_variations = [ sequence,
+                                sequence[::-1],
+                                str(Seq(sequence).complement()),
+                                str(Seq(sequence[::-1]).complement()) ]
+        this_barcode_scores = [0 for item in sequence_variations]
+        for seq_var in sequence_variations:
+            barcode_alignments = aligner.align(seq_var, barcode_seq)
             try:
-                this_barcode_scores[i] = (sorted(barcode_alignments)[-1].score)/float(len(barcode_dict[barcode][0]))
+                this_barcode_scores[i] = (sorted(barcode_alignments)[-1].score)/float(len(barcode_seq))
             except IndexError:
                 pass
         # make sure we have at least one score above some cutoff
@@ -127,10 +132,10 @@ def find_barcode_and_template(sequence, aligner, barcode_dict, cutoff=0.8):
     if any(scores) and max(scores) > cutoff:
         best_score = max(scores)
         best_score_idx = scores.index(best_score)
-        best_direction = directions[best_score_idx] # defaults to 0 ('forward') if no score is above cutoff
-        best_barcode = barcode_dict.keys()[best_score_idx]
-        best_template = barcode_dict[barcode][1][best_direction] # this will default to forward if it's not set
-    return(best_barcode, best_template, best_direction)
+        best_direction_idx = directions[best_score_idx] # defaults to 0 ('forward') if no score is above cutoff
+        best_barcode = list(barcode_dict.keys())[best_score_idx]
+        best_template = barcode_dict[barcode][1][best_direction_idx] # this will default to forward if it's not set
+    return(best_barcode, best_template, best_direction_idx)
 
 ALLOWED_CHARS = set('PARENT ACTG -\n')
 
@@ -165,6 +170,7 @@ def main():
     count = 0
     barcodes_missing = 0
     sequence_end_missing = 0
+    bad_sequence_alignments = 0
     bad_reads = 0
 
     aligner = Align.PairwiseAligner()
@@ -175,6 +181,8 @@ def main():
     #heavily penalize gaps
     aligner.open_gap_score = -100.
 
+    CUTOFF = 0.8
+
     with open(fastq_filename,'r') as f:
         # this parses a fastq file into names, sequences of DNA codons, 
         # and the quality score for the sequence transcription
@@ -183,15 +191,19 @@ def main():
             count += 1
             if 'N' not in sequence:
                 # sort this sequence into a barcode class (or none if no good scores)
-                this_barcode, this_template, this_direction = find_barcode_and_template(sequence=sequence,
-                                                                        aligner=aligner,
-                                                                        barcode_dict=BARCODES)
+                this_barcode, this_template, this_direction = find_barcode_and_template(
+                    sequence=sequence,
+                    aligner=aligner,
+                    barcode_dict=BARCODES,
+                    cutoff=CUTOFF
+                )
                 # if we still can't find barcodes even in complementary space, it's unsorted
                 if this_barcode is None or this_template is None:
                     barcodes_missing += 1
                     misses += 1
                     this_barcode='UNSORTED'
-                    this_template = BARCODES[BARCODES.keys()[0]][1][0]#TODO: make this assigned manually?
+                    barcodes_list = list(BARCODES.keys())
+                    this_template = BARCODES[barcodes_list[0]][1][0]#TODO: make this assigned manually?
                     # since we don't know the correct direction, do alignments forward and reverse, and complements
                     fwd_alignments = aligner.align(sequence,
                                                    this_template)
@@ -223,18 +235,21 @@ def main():
                     # find best alignment based on scores
                     best_score_idx = scores.index(max(scores))
                     split_alignment = split_alignments[best_score_idx]
+                    align_score = scores[best_score_idx]
                 else:
                     sequence_variations = [ sequence,
                                             sequence[::-1],
-                                            str(Seq(sequence, IUPAC.unambiguous_dna)),
-                                            str(Seq(sequence[::-1], IUPAC.unambiguous_dna)) ]
+                                            str(Seq(sequence).complement()),
+                                            str(Seq(sequence[::-1]).complement()) ]
                     alignments = aligner.align(sequence_variations[this_direction], this_template)
+                    #print('non-forward alignment: {} with sequence: {}\nAnd Score: {}'.format(this_direction, str(sorted(alignments)[-1]), sorted(alignments)[-1].score))
                     split_alignment = str(sorted(alignments)[-1]).split('\n')
+                    align_score = sorted(alignments)[-1].score / len(this_template)
                 # get the part of the sequence where the alignment lies
                 codon_idx = split_alignment[2].index(this_template[0])
                 aligned_seq_str = split_alignment[0][codon_idx:codon_idx+len(this_template)]
                 #screen for completely-missing first part of the sequence
-                if '.' not in aligned_seq_str and '-' not in aligned_seq_str:
+                if '.' not in aligned_seq_str and '-' not in aligned_seq_str and align_score >= CUTOFF:
                     #print(Seq(aligned_seq_str, IUPAC.unambiguous_dna).translate())
                     translated_aligned_seq = (Seq(aligned_seq_str, IUPAC.unambiguous_dna).translate())
                     names[this_barcode].append(name)
@@ -245,6 +260,9 @@ def main():
                     aa_seqs[this_barcode].append(translated_aligned_seq)
                     if this_barcode != 'UNSORTED':
                         hits += 1
+                elif align_score <= CUTOFF and this_barcode != 'UNSORTED':
+                    misses += 1
+                    bad_sequence_alignments += 1
                 elif this_barcode != 'UNSORTED':
                     misses += 1 
                     sequence_end_missing += 1
@@ -255,12 +273,14 @@ def main():
         'Hits: {}\nMisses: {}\n\
         Missing Barcodes: {}\n\
         Incomplete Template Sequence: {}\n\
-        Low-Quality Reads: {}\nTotal: {}'.format(hits,
-                                                 misses,
-                                                 barcodes_missing,
-                                                 sequence_end_missing,
-                                                 bad_reads,
-                                                 count)
+        Low-Quality Reads: {}\n\
+        Poor Target Alignment: {}\nTotal: {}'.format(hits,
+                                                     misses,
+                                                     barcodes_missing,
+                                                     sequence_end_missing,
+                                                     bad_reads,
+                                                     bad_sequence_alignments,
+                                                     count)
     )
     barcodes_list = list(BARCODES.keys())
     barcodes_list.append('UNSORTED')
