@@ -70,10 +70,11 @@ x_indices = np.arange(global_pos_counts.shape[0])
 plots = []
 width = 0.35
 bottom = np.zeros(global_pos_counts.shape[0])
-colormap = get_cmap('tab20')
+#do it this way to avoid matplotlib colormap version conflicts
+color_list=['r','g','b','c','m','y','k','w']
 
-for i in range(len(ALPHABET)):
-    plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i], color = colormap(float(i%(len(ALPHABET)-1))/float(len(ALPHABET)-1)), edgecolor='black')
+for i in range(len(ALPHABET)-1, -1, -1):
+    plt.bar(x_indices, global_pos_counts[:,i], width, bottom=bottom, label=ALPHABET[i], edgecolor='black', color=color_list[i%len(color_list)])
     bottom += global_pos_counts[:,i]
 
 plt.xticks(x_indices, TEMPLATE_SEQ)
